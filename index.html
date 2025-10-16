@@ -299,10 +299,11 @@
                     this.animationId = null;
                     this.screenHeight = window.innerHeight;
                     
-                    // Update cached screen height on resize
-                    window.addEventListener('resize', () => {
+                    // Store resize handler for potential cleanup
+                    this.resizeHandler = () => {
                         this.screenHeight = window.innerHeight;
-                    });
+                    };
+                    window.addEventListener('resize', this.resizeHandler);
                 }
                 
                 createParticle() {
