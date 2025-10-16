@@ -297,6 +297,12 @@
                     this.emojis = ['🎉', '🎊', '⭐', '🌟', '💫', '✨', '🎈', '🎆', '🎇'];
                     this.particles = [];
                     this.animationId = null;
+                    this.screenHeight = window.innerHeight;
+                    
+                    // Update cached screen height on resize
+                    window.addEventListener('resize', () => {
+                        this.screenHeight = window.innerHeight;
+                    });
                 }
                 
                 createParticle() {
@@ -350,7 +356,10 @@
                     const gyroInfluenceX = gyroSupported ? gyroX * 0.5 : 0;
                     const gyroInfluenceY = gyroSupported ? gyroY * 0.3 : 0;
                     
-                    this.particles.forEach((particle, index) => {
+                    // Use reverse loop to safely remove particles while iterating
+                    for (let i = this.particles.length - 1; i >= 0; i--) {
+                        const particle = this.particles[i];
+                        
                         // Update position with gravity and gyroscope influence
                         particle.vy += 0.1; // gravity
                         particle.vx += gyroInfluenceX * 0.1; // gyroscope influence
@@ -374,12 +383,12 @@
                         particle.element.style.top = particle.y + 'px';
                         particle.element.style.transform = `rotate(${particle.rotation}deg) scale(${particle.scale})`;
                         
-                        // Remove particles that fall off screen
-                        if (particle.y > window.innerHeight + 100) {
+                        // Remove particles that fall off screen (using cached screenHeight)
+                        if (particle.y > this.screenHeight + 100) {
                             particle.element.remove();
-                            this.particles.splice(index, 1);
+                            this.particles.splice(i, 1);
                         }
-                    });
+                    }
                     
                     // Stop animation when all particles are gone
                     if (this.particles.length === 0) {
