@@ -178,6 +178,30 @@
                 font-size: 1.5rem;
             }
         }
+        
+        /* Confetti overlay styles */
+        #confetti-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 9999;
+            overflow: hidden;
+            display: none;
+        }
+        
+        #confetti-overlay.active {
+            display: block;
+        }
+        
+        .confetti {
+            position: absolute;
+            font-size: 2rem;
+            user-select: none;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -207,6 +231,9 @@
             <button id="new-game-btn">New Game</button>
         </div>
     </div>
+    
+    <!-- Confetti Overlay -->
+    <div id="confetti-overlay"></div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
@@ -221,6 +248,167 @@
             const messageElement = document.getElementById('message');
             const resetButton = document.getElementById('reset-btn');
             const newGameButton = document.getElementById('new-game-btn');
+            const confettiOverlay = document.getElementById('confetti-overlay');
+            
+            // Gyroscope data
+            let gyroX = 0;
+            let gyroY = 0;
+            let gyroSupported = false;
+            
+            // Request gyroscope permission and set up listener
+            function initGyroscope() {
+                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    // iOS 13+ requires permission
+                    DeviceOrientationEvent.requestPermission()
+                        .then(response => {
+                            if (response === 'granted') {
+                                setupGyroscope();
+                            }
+                        })
+                        .catch(console.error);
+                } else if (window.DeviceOrientationEvent) {
+                    // Android and older iOS
+                    setupGyroscope();
+                }
+            }
+            
+            function setupGyroscope() {
+                window.addEventListener('deviceorientation', (event) => {
+                    gyroSupported = true;
+                    // gamma is left/right tilt (-90 to 90)
+                    // beta is front/back tilt (-180 to 180)
+                    gyroX = (event.gamma || 0) / 90; // Normalize to -1 to 1
+                    gyroY = (event.beta || 0) / 180; // Normalize to -1 to 1
+                }, true);
+            }
+            
+            // Initialize gyroscope on first user interaction
+            let gyroInitialized = false;
+            document.addEventListener('click', () => {
+                if (!gyroInitialized) {
+                    initGyroscope();
+                    gyroInitialized = true;
+                }
+            }, { once: true });
+            
+            // Confetti system
+            class Confetti {
+                constructor() {
+                    this.emojis = ['🎉', '🎊', '⭐', '🌟', '💫', '✨', '🎈', '🎆', '🎇'];
+                    this.particles = [];
+                    this.animationId = null;
+                    this.screenHeight = window.innerHeight;
+                    
+                    // Store resize handler for potential cleanup
+                    this.resizeHandler = () => {
+                        this.screenHeight = window.innerHeight;
+                    };
+                    window.addEventListener('resize', this.resizeHandler);
+                }
+                
+                createParticle() {
+                    const emoji = this.emojis[Math.floor(Math.random() * this.emojis.length)];
+                    const element = document.createElement('div');
+                    element.className = 'confetti';
+                    element.textContent = emoji;
+                    element.style.left = Math.random() * 100 + '%';
+                    element.style.top = '-50px';
+                    confettiOverlay.appendChild(element);
+                    
+                    return {
+                        element: element,
+                        x: parseFloat(element.style.left),
+                        y: -50,
+                        vx: (Math.random() - 0.5) * 2, // velocity x
+                        vy: Math.random() * 2 + 2, // velocity y (downward)
+                        rotation: Math.random() * 360,
+                        rotationSpeed: (Math.random() - 0.5) * 10,
+                        scale: 0.5 + Math.random() * 1
+                    };
+                }
+                
+                start() {
+                    confettiOverlay.classList.add('active');
+                    this.particles = [];
+                    
+                    // Create initial burst of confetti
+                    for (let i = 0; i < 50; i++) {
+                        this.particles.push(this.createParticle());
+                    }
+                    
+                    // Keep adding confetti for 3 seconds
+                    const addInterval = setInterval(() => {
+                        for (let i = 0; i < 3; i++) {
+                            this.particles.push(this.createParticle());
+                        }
+                    }, 100);
+                    
+                    setTimeout(() => {
+                        clearInterval(addInterval);
+                    }, 3000);
+                    
+                    this.animate();
+                }
+                
+                animate() {
+                    this.animationId = requestAnimationFrame(() => this.animate());
+                    
+                    // Apply gyroscope influence
+                    const gyroInfluenceX = gyroSupported ? gyroX * 0.5 : 0;
+                    const gyroInfluenceY = gyroSupported ? gyroY * 0.3 : 0;
+                    
+                    // Use reverse loop to safely remove particles while iterating
+                    for (let i = this.particles.length - 1; i >= 0; i--) {
+                        const particle = this.particles[i];
+                        
+                        // Update position with gravity and gyroscope influence
+                        particle.vy += 0.1; // gravity
+                        particle.vx += gyroInfluenceX * 0.1; // gyroscope influence
+                        particle.vy += gyroInfluenceY * 0.1;
+                        
+                        particle.x += particle.vx;
+                        particle.y += particle.vy;
+                        particle.rotation += particle.rotationSpeed;
+                        
+                        // Apply boundaries with bounce
+                        if (particle.x < 0) {
+                            particle.x = 0;
+                            particle.vx *= -0.5;
+                        } else if (particle.x > 100) {
+                            particle.x = 100;
+                            particle.vx *= -0.5;
+                        }
+                        
+                        // Update element position
+                        particle.element.style.left = particle.x + '%';
+                        particle.element.style.top = particle.y + 'px';
+                        particle.element.style.transform = `rotate(${particle.rotation}deg) scale(${particle.scale})`;
+                        
+                        // Remove particles that fall off screen (using cached screenHeight)
+                        if (particle.y > this.screenHeight + 100) {
+                            particle.element.remove();
+                            this.particles.splice(i, 1);
+                        }
+                    }
+                    
+                    // Stop animation when all particles are gone
+                    if (this.particles.length === 0) {
+                        this.stop();
+                    }
+                }
+                
+                stop() {
+                    if (this.animationId) {
+                        cancelAnimationFrame(this.animationId);
+                        this.animationId = null;
+                    }
+                    confettiOverlay.classList.remove('active');
+                    confettiOverlay.innerHTML = '';
+                    this.particles = [];
+                }
+            }
+            
+            const confettiSystem = new Confetti();
             
             // Winning combinations
             const winPatterns = [
@@ -283,6 +471,8 @@
                 } else {
                     messageElement.textContent = `Player ${currentPlayer} Wins!`;
                     messageElement.classList.add('win-message');
+                    // Trigger confetti animation on win!
+                    confettiSystem.start();
                 }
             }
             
@@ -299,6 +489,7 @@
                 gameActive = true;
                 messageElement.textContent = '';
                 messageElement.classList.remove('win-message');
+                confettiSystem.stop(); // Stop confetti on reset
                 
                 cells.forEach(cell => {
                     cell.textContent = '';
